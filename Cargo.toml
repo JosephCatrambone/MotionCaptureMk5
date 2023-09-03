@@ -1,0 +1,52 @@
+[package]
+name = "motion_capture_mk5"
+version = "0.1.0"
+authors = ["Joseph Catrambone <jo.jcat@gmail.com>"]
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+# Based on the eframe template by Emil Ernerfeldt
+
+[lib]
+name = "motion_capture_mk5"
+path = "src/lib.rs"
+
+[[bin]]
+name = "main_app"
+path = "src/main.rs"
+
+[dependencies]
+egui = "0.22.0"
+eframe = { version = "0.22.0", default-features = false, features = [
+    "accesskit",     # Make egui comptaible with screen readers. NOTE: adds a lot of dependencies.
+    "default_fonts", # Embed the default egui fonts.
+    "wgpu",          # Use the glow rendering backend. Alternative: "wgpu".
+    "persistence",   # Enable restoring app state when restarting the app.
+] }
+image = "0.24.6"
+log = "0.4"
+
+# You only need serde if you want app persistence:
+serde = { version = "1", features = ["derive"] }
+
+# native:
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+env_logger = "0.10"
+#nokhwa = { version = "0.10.3", features = ["input-native", "output-wgpu"] }
+nokhwa = { git = "https://github.com/l1npengtul/nokhwa.git", rev="557eba6", features = ["input-native", "output-wgpu", "serde"] }
+
+# web:
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wasm-bindgen-futures = "0.4"
+#nokhwa = { version = "0.10.3", features = ["input-jscam", "output-wgpu"] } # input-web?
+nokhwa = { git = "https://github.com/l1npengtul/nokhwa.git", rev="557eba6", features = ["input-jscam", "output-wgpu", "serde"] }
+
+[profile.release]
+opt-level = 2 # fast and small wasm
+
+# Optimize all dependencies even in debug builds:
+[profile.dev.package."*"]
+opt-level = 2
+
+[patch.crates-io]
