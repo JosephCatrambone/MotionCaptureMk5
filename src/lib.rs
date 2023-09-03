@@ -1,8 +1,8 @@
-use std::ops::DerefMut;
+
 use egui;
 use std::sync::{Arc, Mutex};
-use nokhwa::{Camera, pixel_format};
-use nokhwa::utils::{CameraIndex, RequestedFormat, RequestedFormatType};
+
+mod camera;
 
 #[derive(serde::Deserialize, serde::Serialize)]
 #[serde(default)] // if we add new fields, give them default values when deserializing old state
@@ -10,7 +10,10 @@ pub struct MainApp {
 	preferred_camera_idx: usize,
 
 	#[serde(skip)]
-	camera: Arc<Mutex<Option<Camera>>>
+
+
+	#[serde(skip)]
+	frame_buffer: Vec<u8>,
 }
 
 impl Default for MainApp {
@@ -48,7 +51,7 @@ impl eframe::App for MainApp {
 	/// Called each time the UI needs repainting, which may be many times per second.
 	/// Put your widgets into a `SidePanel`, `TopPanel`, `CentralPanel`, `Window` or `Area`.
 	fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-		let Self { preferred_camera_idx, camera } = self;
+		//let Self { preferred_camera_idx, camera } = self;
 
 		// Examples of how to create different panels and windows.
 		// Pick whichever suits you.
@@ -121,39 +124,5 @@ impl MainApp {
 		});
 	}
 
-	/// Close the old camera stream and set the value to the new one.
-	fn swap_camera(&mut self, new_camera: Option<Camera>) {
-		match &mut self.camera.lock() {
-			Ok(mutex_guard) => {
-				if let Some(camera) = mutex_guard.deref_mut() {
-					if let Err(problem) = camera.stop_stream() {
-						eprintln!("Soft issue closing camera stream: {:?}", problem);
-					}
-				}
 
-				(*mutex_guard.deref_mut()) = new_camera;
-			},
-			Err(err) => {
-				panic!("Mutex poisoned: {:?}", err);
-			}
-		}
-	}
-
-	/// Close the old camera stream if it exists and replace it with the given config.
-	fn set_camera(&mut self, new_idx: u32, camera_config: Option<RequestedFormatType>) {
-		let index = CameraIndex::Index(new_idx);
-		let requested = RequestedFormat::new::<pixel_format::RgbFormat>(match camera_config {
-			Some(config) => config,
-			None => RequestedFormatType::AbsoluteHighestFrameRate
-		});
-		println!("Opening camera.");
-		let camera = Camera::new(index, requested);
-		println!("Opened");
-		if let Err(problem) = camera {
-			panic!("{}", problem);
-		}
-		println!("Swapping camera.");
-		self.swap_camera(camera.ok());
-		println!("Swapped");
-	}
 }
