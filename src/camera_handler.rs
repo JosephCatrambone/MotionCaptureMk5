@@ -1,27 +1,27 @@
 use nokhwa::{Camera, pixel_format};
-use nokhwa::utils::{CameraFormat, CameraIndex, FrameFormat, RequestedFormat, RequestedFormatType};
+use nokhwa::utils::{CameraFormat, CameraIndex, FrameFormat, RequestedFormat, RequestedFormatType, Resolution};
 use std::ops::DerefMut;
 use std::sync::{Arc, mpsc, Mutex};
 use std::thread;
 use image;
-use nokhwa::pixel_format::RgbFormat;
 
 pub struct CameraHandler {
 	camera_idx: u32,
 	camera: Arc<Mutex<Option<Camera>>>,
-	worker_thread: Option<thread::JoinHandle<()>>,
-	image_tx: mpsc::Sender<(u64, image::RgbImage)>,
+	enumerated_cameras: Vec<String>,
+	worker_thread: thread::JoinHandle<()>,
 	image_rx: mpsc::Receiver<(u64, image::RgbImage)>,
 }
 
 impl Default for CameraHandler {
 	fn default() -> Self {
 		let (tx, rx) = mpsc::channel();
+		let camera_ref = Arc::new(Mutex::new(None));
 		Self {
 			camera_idx: 0,
-			camera: Arc::new(Mutex::new(None)),
-			worker_thread: None,
-			image_tx: tx,
+			camera: camera_ref.clone(),
+			enumerated_cameras: vec![],
+			worker_thread: thread::spawn(move || { image_fetch_worker(camera_ref.clone(), tx.clone()) }),
 			image_rx: rx,
 		}
 	}
@@ -30,11 +30,7 @@ impl Default for CameraHandler {
 impl Drop for CameraHandler {
 	fn drop(&mut self) {
 		self.swap_camera(None);
-		if let Some(t) = &mut self.worker_thread {
-			if let Err(e) = t.join() {
-				eprintln!("Failed to join and close thread on shutdown: {:?}", e);
-			}
-		}
+		//self.worker_thread.join().unwrap();
 	}
 }
 
@@ -42,17 +38,10 @@ impl CameraHandler {
 	/// Return a list of strings that describe cameras.
 	/// The index of a camera should correspond to the device id.
 	pub fn get_cameras(&self) -> Vec<String> {
-		vec![]
+		vec!["Default".to_string(),]
 	}
-
-	fn get_frame(&mut self) {
-		let mut c = self.camera.unwrap();
-		let frame = c.frame().unwrap();
-		let decoded = frame.decode_image::<RgbFormat>();
-		if let Ok(f) = decoded {
-
-		}
-	}
+	
+	pub fn get_camera_idx(&self) -> u32 { self.camera_idx }
 
 	/// Close the old camera stream and set the value to the new one.
 	fn swap_camera(&mut self, mut new_camera: Option<Camera>) {
@@ -100,15 +89,20 @@ impl CameraHandler {
 			CameraFormat::new_from(width, height, FrameFormat::MJPEG, fps)
 		)));
 	}
+	
+	pub fn request_open_camera_highest_fps(&mut self, device_idx: u32) {
+		self.set_camera(device_idx, Some(RequestedFormatType::AbsoluteHighestFrameRate));
+	}
 }
 
 fn image_fetch_worker(camera_ref: Arc<Mutex<Option<Camera>>>, transmit: mpsc::Sender<(u64, image::RgbImage)>) {
 	let mut count = 0;
 	loop {
 		if let Ok(mut camera_lock) = camera_ref.lock() {
-			if let Some(mut camera) = &mut camera_lock.deref_mut() {
+			if let Some(ref mut camera) = &mut camera_lock.deref_mut() {
 				if let Ok(frame) = camera.frame() {
-					if let Ok(buf) = frame.decode_image() {
+					if let Ok(buf) = frame.decode_image::<pixel_format::RgbFormat>() {
+						println!("Sending frame {}", &count);
 						transmit.send((count, buf));
 						count += 1;
 					}

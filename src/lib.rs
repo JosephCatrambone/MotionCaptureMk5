@@ -1,16 +1,15 @@
 
 use egui;
-use std::sync::{Arc, Mutex};
+use crate::camera_handler::CameraHandler;
 
-mod camera;
+mod camera_handler;
+mod depth_model;
 
 #[derive(serde::Deserialize, serde::Serialize)]
 #[serde(default)] // if we add new fields, give them default values when deserializing old state
 pub struct MainApp {
-	preferred_camera_idx: usize,
-
 	#[serde(skip)]
-
+	camera_manager: camera_handler::CameraHandler,
 
 	#[serde(skip)]
 	frame_buffer: Vec<u8>,
@@ -19,9 +18,8 @@ pub struct MainApp {
 impl Default for MainApp {
 	fn default() -> Self {
 		Self {
-			// Example stuff:
-			preferred_camera_idx: 0,
-			camera: Arc::new(Mutex::new(None))
+			camera_manager: CameraHandler::default(),
+			frame_buffer: vec![]
 		}
 	}
 }
@@ -108,12 +106,12 @@ impl MainApp {
 			ui.horizontal(|ui| {
 				ui.spacing_mut().item_spacing.x = 0.0;
 				ui.label("Camera IDX:");
-				let options: Vec<String> = (0u32..10).into_iter().map(|idx| { format!("Camera {}", idx) }).collect();
+				let mut idx = self.camera_manager.get_camera_idx() as usize;
+				let options = self.camera_manager.get_cameras();
 				if egui::ComboBox::from_label("Camera:").show_index(
-					ui, &mut self.preferred_camera_idx, options.len(), |i| &options[i]
+					ui, &mut idx, options.len(), |i| &options[i]
 				).changed() {
-					// Maybe close this camera...
-					self.set_camera(self.preferred_camera_idx as u32, None);
+					self.camera_manager.request_open_camera_highest_fps(idx as u32);
 				};
 			});
 
