@@ -79,13 +79,10 @@ impl eframe::App for MainApp {
 
 		egui::CentralPanel::default().show(ctx, |ui| {
 			// The central panel the region left after adding TopPanel's and SidePanel's
-
-			ui.heading("eframe template");
-			ui.hyperlink("https://github.com/emilk/eframe_template");
-			ui.add(egui::github_link_file!(
-                "https://github.com/emilk/eframe_template/blob/master/",
-                "Source code."
-            ));
+			//ui.heading("eframe template");
+			if ui.button("Burn image").clicked() {
+				let _ = self.camera_manager.read_next_frame();
+			}
 			egui::warn_if_debug_build(ui);
 		});
 
