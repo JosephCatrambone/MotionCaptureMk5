@@ -18,13 +18,14 @@ path = "src/main.rs"
 
 [dependencies]
 egui = "0.22.0"
+egui_extras = { version = "0.22.0", features = ["image", "svg"] }
 eframe = { version = "0.22.0", default-features = false, features = [
     "accesskit",     # Make egui comptaible with screen readers. NOTE: adds a lot of dependencies.
     "default_fonts", # Embed the default egui fonts.
     "wgpu",          # Use the glow rendering backend. Alternative: "wgpu".
     "persistence",   # Enable restoring app state when restarting the app.
 ] }
-image = "0.24.6"
+image = { version = "0.24.6", features = ["openexr", "tiff", "tga", "webp", "bmp", "gif", "qoi", "png", "jpeg"] }
 log = "0.4"
 tract = "0.20.18"
 
