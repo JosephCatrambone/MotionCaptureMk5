@@ -32,6 +32,7 @@ impl Drop for CameraHandler {
 
 impl CameraHandler {
 	pub fn new() -> Self {
+		let max_buffer_size: usize = 10;
 		let camera_ref = Arc::new(Mutex::new(None::<Camera>));
 		let run_thread = Arc::<AtomicBool>::new(true.into());
 		let (tx, rx) = mpsc::channel();
@@ -49,16 +50,22 @@ impl CameraHandler {
 							let camera_resolution = camera.resolution();
 							let camera_fps = camera.frame_rate();
 							// Check if we have any images that were deallocated.  Reuse them.
-							let img = match allocated_images.iter().find(|&i| { Arc::strong_count(i) < 2 }) {
-								Some(i) => {
-									println!("Reusing image.");
-									i.clone()
-								},
-								None => {
-									println!("Allocating new image.");
-									let i = Arc::new(Mutex::new(image::RgbImage::new(camera_resolution.width(), camera_resolution.height())));
-									allocated_images.push(i.clone());
-									i
+							let img = {
+								loop {
+									let maybe_image = allocated_images.iter().find(|&i| { Arc::strong_count(i) < 2 });
+									if allocated_images.len() < max_buffer_size && maybe_image.is_none() {
+										println!("Allocating new image.");
+										let i = Arc::new(Mutex::new(image::RgbImage::new(camera_resolution.width(), camera_resolution.height())));
+										allocated_images.push(i.clone());
+										break i
+									} else if let Some(i) = maybe_image {
+										println!("Reusing image.");
+										break i.clone()
+									} else {
+										// TODO: Check for quit.  Drain buffer.
+										thread::yield_now();
+										continue;
+									}
 								}
 							};
 							// Image may have the wrong size for this camera resolution.
@@ -71,6 +78,8 @@ impl CameraHandler {
 								Ok(_) => {
 									println!("Sent image {}", &count);
 									thread::sleep(Duration::from_secs_f32(1.0f32 / camera_fps as f32));
+									println!("FPS: {}", &camera_fps);
+									//thread::yield_now();
 								}
 								Err(_) => {
 									panic!("Failed to send. Channel may have closed.");
@@ -137,15 +146,40 @@ impl CameraHandler {
 			Some(config) => config,
 			None => RequestedFormatType::AbsoluteHighestFrameRate
 		});
-		println!("Opening camera.");
 		let camera = Camera::new(index, requested);
-		println!("Opened");
 		if let Err(problem) = camera {
 			panic!("{}", problem);
 		}
-		println!("Swapping camera.");
-		self.swap_camera(camera.ok());
-		println!("Swapped");
+		let camera = camera.unwrap();
+		println!("Opened camera with resolution {:?} and frame rate {:?}", &camera.resolution(), &camera.frame_rate());
+		self.swap_camera(Some(camera));
+	}
+
+	/// Maybe calls the function with a camera if one is open.
+	/// Returns 'true' if there was an open function or false otherwise.
+	/// Functions as a noop if the camera is not open.
+	fn with_camera<F, R>(&self, func: F) -> Option<R> where F: Fn(&mut Camera) -> R {
+		let mut mutex_guard = self.camera.lock().expect("Unable to unwrap mutex around camera -- lock may have been poisoned.  Did the program crash?");
+		let mut cam = mutex_guard.take();
+		if let Some(mut cam) = cam {
+			return Some(func(&mut cam));
+		}
+		None
+	}
+
+	pub fn get_resolution(&self) -> Option<(u32, u32)> {
+		let mut res: Option<(u32, u32)> = self.with_camera(|c| {
+			return (c.resolution().width_x, c.resolution().height_y);
+		});
+		res
+	}
+
+	/// Return a copy of the next frame.
+	/// This is a convenience method but should not be used in favor of read_next_frame.
+	pub fn get_frame(&mut self) -> Option<image::RgbImage> {
+		let f = self.read_next_frame();
+		let frame = f.lock().unwrap().clone();
+		Some(frame)
 	}
 
 	pub fn request_open_camera(&mut self, device_idx: u32, width: u32, height: u32, fps: u32) {

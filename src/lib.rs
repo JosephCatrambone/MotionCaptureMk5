@@ -1,27 +1,24 @@
 
 use egui;
+use image;
+use std::default::Default;
+use std::ops::Deref;
 use crate::camera_handler::CameraHandler;
 
 mod camera_handler;
 mod depth_model;
 
-#[derive(serde::Deserialize, serde::Serialize)]
+#[derive(Default, serde::Deserialize, serde::Serialize)]
 #[serde(default)] // if we add new fields, give them default values when deserializing old state
 pub struct MainApp {
 	#[serde(skip)]
-	camera_manager: camera_handler::CameraHandler,
+	camera_manager: CameraHandler,
+
+	#[serde(skip)]
+	display_texture: Option<egui::TextureHandle>,
 
 	#[serde(skip)]
 	frame_buffer: Vec<u8>,
-}
-
-impl Default for MainApp {
-	fn default() -> Self {
-		Self {
-			camera_manager: CameraHandler::default(),
-			frame_buffer: vec![]
-		}
-	}
 }
 
 impl MainApp {
@@ -36,7 +33,9 @@ impl MainApp {
 			return eframe::get_value(storage, eframe::APP_KEY).unwrap_or_default();
 		}
 
-		Default::default()
+		Self {
+			..Default::default()
+		}
 	}
 }
 
@@ -81,8 +80,16 @@ impl eframe::App for MainApp {
 			// The central panel the region left after adding TopPanel's and SidePanel's
 			//ui.heading("eframe template");
 			if ui.button("Burn image").clicked() {
-				let _ = self.camera_manager.read_next_frame();
+				let frame = self.camera_manager.read_next_frame();
+				if let Some(ref mut handle) = &mut self.display_texture {
+					let lock = frame.lock().unwrap();
+					handle.set(egui::ColorImage::from_rgb([lock.width() as usize, lock.height() as usize], lock.as_raw()), egui::TextureOptions::default());
+				}
 			}
+			if let Some(tex) = &self.display_texture {
+				ui.image(tex.id(), tex.size_vec2());
+			}
+
 			egui::warn_if_debug_build(ui);
 		});
 
@@ -98,7 +105,7 @@ impl eframe::App for MainApp {
 }
 
 impl MainApp {
-	fn draw_camera_select_ui(&mut self, _ctx: &egui::Context, ui: &mut egui::Ui) {
+	fn draw_camera_select_ui(&mut self, ctx: &egui::Context, ui: &mut egui::Ui) {
 		ui.with_layout(egui::Layout::top_down(egui::Align::LEFT), |ui| {
 			ui.horizontal(|ui| {
 				ui.spacing_mut().item_spacing.x = 0.0;
@@ -109,6 +116,9 @@ impl MainApp {
 					ui, &mut idx, options.len(), |i| &options[i]
 				).changed() {
 					self.camera_manager.request_open_camera_highest_fps(idx as u32);
+					let frame = self.camera_manager.get_frame().unwrap();
+					let img = egui::ColorImage::from_rgb([frame.width() as usize, frame.height() as usize], frame.as_raw());
+					self.display_texture = Some(ctx.load_texture("display-texture", img, Default::default()));
 				};
 			});
 
@@ -118,6 +128,45 @@ impl MainApp {
 			);
 		});
 	}
-
-
 }
+
+// Some slightly ugly conversions from egui::RgbImage to Colorframe
+// TODO: Replace all the funky casting above with this.
+struct ImageRgbImageWrapper(image::RgbImage);
+
+impl Deref for ImageRgbImageWrapper {
+	type Target = image::RgbImage;
+
+	fn deref(&self) -> &Self::Target {
+		&self.0
+	}
+}
+
+impl From<ImageRgbImageWrapper> for egui::ColorImage {
+	fn from(value: ImageRgbImageWrapper) -> Self {
+		egui::ColorImage::from_rgb([value.width() as usize, value.height() as usize], &value.as_raw())
+	}
+}
+
+/*
+fn imagedata_to_egui_image<T>(frame: &mut eframe::Frame, image_data: T) -> Option<(egui::Vec2, egui::TextureId)> where T: GenericImageView {
+	// Load the image:
+	let image = image::load_from_memory(image_data).expect("Failed to load image");
+	let image_buffer = image.to_rgba8();
+
+	let size = (image.width() as usize, image.height() as usize);
+	let pixels = image_buffer.into_vec();
+	assert_eq!(size.0 * size.1 * 4, pixels.len());
+	let pixels: Vec<_> = pixels
+		.chunks_exact(4)
+		.map(|p| egui::Color32::from_rgba_unmultiplied(p[0], p[1], p[2], p[3]))
+		.collect();
+
+	// Allocate a texture:
+	let texture = frame
+		.tex_allocator()
+		.alloc_srgba_premultiplied(size, &pixels);
+	let size = egui::Vec2::new(size.0 as f32, size.1 as f32);
+	Some((size, texture))
+}
+*/
