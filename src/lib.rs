@@ -7,6 +7,8 @@ use crate::camera_handler::CameraHandler;
 
 mod camera_handler;
 mod depth_model;
+mod pose;
+
 
 #[derive(Default, serde::Deserialize, serde::Serialize)]
 #[serde(default)] // if we add new fields, give them default values when deserializing old state
@@ -68,11 +70,8 @@ impl eframe::App for MainApp {
 		});
 
 		egui::SidePanel::left("side_panel").show(ctx, |ui| {
-			ui.heading("Side Panel");
-
+			//ui.heading("Side Panel");
 			//ui.horizontal(|ui| { ui.label("Write something: "); ui.text_edit_singleline(label); });
-
-			// TODO: Dropdown camera select.
 			self.draw_camera_select_ui(ctx, ui);
 		});
 
@@ -83,7 +82,7 @@ impl eframe::App for MainApp {
 				let frame = self.camera_manager.read_next_frame();
 				if let Some(ref mut handle) = &mut self.display_texture {
 					let lock = frame.lock().unwrap();
-					handle.set(egui::ColorImage::from_rgb([lock.width() as usize, lock.height() as usize], lock.as_raw()), egui::TextureOptions::default());
+					handle.set(egui::ColorImage::from_rgb(handle.size(), lock.as_raw()), egui::TextureOptions::default());
 				}
 			}
 			if let Some(tex) = &self.display_texture {
@@ -117,8 +116,7 @@ impl MainApp {
 				).changed() {
 					self.camera_manager.request_open_camera_highest_fps(idx as u32);
 					let frame = self.camera_manager.get_frame().unwrap();
-					let img = egui::ColorImage::from_rgb([frame.width() as usize, frame.height() as usize], frame.as_raw());
-					self.display_texture = Some(ctx.load_texture("display-texture", img, Default::default()));
+					self.display_texture = Some(ctx.load_texture("display-texture", ImageRgbImageWrapper(frame), Default::default()));
 				};
 			});
 
@@ -134,17 +132,10 @@ impl MainApp {
 // TODO: Replace all the funky casting above with this.
 struct ImageRgbImageWrapper(image::RgbImage);
 
-impl Deref for ImageRgbImageWrapper {
-	type Target = image::RgbImage;
-
-	fn deref(&self) -> &Self::Target {
-		&self.0
-	}
-}
-
-impl From<ImageRgbImageWrapper> for egui::ColorImage {
+impl From<ImageRgbImageWrapper> for egui::ImageData {
 	fn from(value: ImageRgbImageWrapper) -> Self {
-		egui::ColorImage::from_rgb([value.width() as usize, value.height() as usize], &value.as_raw())
+		// We could implement Deref to get rid of the .0
+		egui::ColorImage::from_rgb([value.0.width() as usize, value.0.height() as usize], &value.0.as_raw()).into()
 	}
 }
 

@@ -158,6 +158,7 @@ impl CameraHandler {
 	/// Maybe calls the function with a camera if one is open.
 	/// Returns 'true' if there was an open function or false otherwise.
 	/// Functions as a noop if the camera is not open.
+	/// TODO: Maybe we can replace all the camera stuff with something like this?
 	fn with_camera<F, R>(&self, func: F) -> Option<R> where F: Fn(&mut Camera) -> R {
 		let mut mutex_guard = self.camera.lock().expect("Unable to unwrap mutex around camera -- lock may have been poisoned.  Did the program crash?");
 		let mut cam = mutex_guard.take();
